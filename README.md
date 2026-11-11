@@ -28,7 +28,7 @@ Design targets for the evaluators:
 - Edges of the primary and the secondary bridge that fall inside the same dead time
 - Validation against a circuit-level simulation with the same device capacitance
 
-![Simscape model of the dual active bridge converter](fig1_circuit.png)
+![Simscape model of the dual active bridge converter](figures/fig1_circuit.png)
 
 *Figure 1: Simscape Electrical model of the converter used as the test bench. From left to right: 800 V DC source with input filter and DC-link capacitor; primary full bridge (S1–S4); current sensor and primary-side link resistance and inductance; ideal transformer (n = 1.7); secondary full bridge (S5–S8); battery-side capacitor, filter and source. Each switch is an ideal MOSFET with body diode in parallel with a datasheet-table C<sub>oss</sub> block; the eight gate signals come from time-based pulse generators, and node, bus and link-current signals are logged for comparison with the evaluators.*
 
@@ -51,11 +51,11 @@ The primary bridge (legs PA and PB) sits on the 800 V DC link, the secondary bri
 
 Each switch's output capacitance is taken from the CAB320M17XM3 datasheet curve (Rev. 5, Figs. 8–9). It falls from about 36 nF near 0 V to about 1 nF above 800 V.
 
-![One primary bridge leg of the Simscape model](fig2_leg.png)
+![One primary bridge leg of the Simscape model](figures/fig2_leg.png)
 
 *Figure 2: One primary leg of the Simscape model (leg PA). The high-side switch S1 and low-side switch S2 are ideal MOSFETs with body diodes, each with its own datasheet C<sub>oss</sub> block (red) connected drain to source; their midpoint is the switch node PA_mid. The gate signals [S1] and [S2] come from the pulse-generator timing.*
 
-![Output capacitance versus voltage](fig3_coss.png)
+![Output capacitance versus voltage](figures/fig3_coss.png)
 
 *Figure 3: Output capacitance of one switch of the Wolfspeed CAB320M17XM3 as used by both evaluators and the Simscape model: datasheet curve (Rev. 5, Figs. 8–9) digitized and smoothed (median over 70 logarithmic voltage bins, made non-increasing, pchip interpolation in log–log), held constant below the first digitized point (0.58 V).*
 
@@ -63,7 +63,7 @@ Each switch's output capacitance is taken from the CAB320M17XM3 datasheet curve 
 
 Fig. 4 shows the voltage v<sub>DS</sub> across the switch that turns on at the end of the dead time, in three Simulink cases. At the turn-off command t<sub>x</sub> it equals the bus voltage V<sub>x</sub>. In (a) it falls to zero at t<sub>zvs</sub>, before the dead time ends, and stays there until the gate turns on at t<sub>dead</sub>: ZVS. In (b) it is still falling at t<sub>dead</sub> and jumps from the remaining voltage dV<sub>x</sub> to zero when the switch turns on: a partial swing. In (c) it does not move during the dead time and jumps from V<sub>x</sub> to zero at t<sub>dead</sub>: hard switching.
 
-![Three dead-time transitions in Simulink](fig4_transitions.png)
+![Three dead-time transitions in Simulink](figures/fig4_transitions.png)
 
 *Figure 4: Voltage across the switch that turns on at the end of the dead time (Simulink, datasheet C<sub>oss</sub>, 200 ns dead time). (a) Mode 5, G2V, 800 V, edge PB↑. (b) Point #540, battery 431 V, edge SA↑. (c) Mode 1, G2V, 800 V, edge SB↑. t<sub>x</sub>: turn-off command; t<sub>zvs</sub>: v<sub>DS</sub> reaches zero; t<sub>dead</sub>: the incoming switch turns on; V<sub>x</sub>: bus voltage; dV<sub>x</sub>: voltage left at t<sub>dead</sub>.*
 
@@ -101,21 +101,21 @@ The 21 cases are the 16 TPS mode cases at 800 V (eight G2V, eight V2G) and the f
 
 Fig. 5 shows eight transitions from these cases. In every panel the Simscape switch voltage, the precise framework and the reduced-order points follow the same transition and end the same way: ZVS in (a), (c), (e), (f) and (g), hard switching in (b) and (d), and a partial swing in (h).
 
-![Eight dead-time transitions: Simulink and both evaluators](fig5_validation.png)
+![Eight dead-time transitions: Simulink and both evaluators](figures/fig5_validation.png)
 
 *Figure 5: Dead-time transitions in eight Simscape cases: voltage across the switch that turns on. (a) Mode 5, G2V, PB↑. (b) Mode 1, G2V, SB↑. (c) Mode 6, G2V, PA↓. (d) Mode 1, V2G, SA↑. (e) Mode 3′, V2G, SA↑. (f) Mode 6′, V2G, PB↓. (g) Point #504 (battery 482 V), SA↓. (h) Point #540 (battery 431 V), SA↑. (a)–(f) at 800 V battery voltage. Simulink (solid), precise ZVS framework (dashed), reduced-order ZVS evaluator (circles: its computed points, one every 10 ns). The evaluator traces end where each transition is complete: at t<sub>zvs</sub> for ZVS edges, at t<sub>dead</sub> for hard and partial edges.*
 
 Fig. 6 shows the same eight cases over one switching period. In all eight, the primary and secondary bridge voltages and the link current of the two evaluators lie on top of the Simscape waveforms.
 
-![Full-period waveforms, cases a to d](fig6_waveforms_a.png)
+![Full-period waveforms, cases a to d](figures/fig6_waveforms_a.png)
 
-![Full-period waveforms, cases e to h](fig6_waveforms_b.png)
+![Full-period waveforms, cases e to h](figures/fig6_waveforms_b.png)
 
 *Figure 6: One switching period of the eight cases of Fig. 5, (a)–(h). Rows: primary bridge voltage v<sub>pri</sub>, secondary bridge voltage v<sub>sec</sub> and link current i<sub>pri</sub>, against t/T<sub>s</sub>. Simulink, precise ZVS framework and reduced-order ZVS evaluator. In the evaluators the bridge voltages switch at the effective (delayed) edge instants they computed.*
 
 Fig. 7 shows point #540 (battery 431 V), where the primary edge PB↑ and the secondary edge SB↓ are commanded 2 ns apart, inside the same dead time. Both switch voltages fall to zero within the dead time in Simscape and in both evaluators; both evaluators give ZVS for both edges, with effective delays of 11.2 ns (PB↑) and 4.9 ns (SB↓), the same as measured from the Simscape waveform.
 
-![Two edges in one dead time at point 540](fig7_twobridge.png)
+![Two edges in one dead time at point 540](figures/fig7_twobridge.png)
 
 *Figure 7: Two edges in one dead time at point #540 (battery 431 V): (a) primary leg, edge PB↑; (b) secondary leg, edge SB↓, commanded 2 ns later. Voltage across the switch that turns on. Simulink (solid), precise ZVS framework (dashed), reduced-order ZVS evaluator (circles: its computed points, one every 10 ns). Ticks: each leg's command t<sub>x</sub>, zero crossing t<sub>zvs</sub> and end of dead time t<sub>dead</sub>.*
 
