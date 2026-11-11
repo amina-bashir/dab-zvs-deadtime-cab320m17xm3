@@ -1,209 +1,125 @@
-# An Exact Discrete-Time Small-Signal Model and PI Current Control of a Triple-Phase-Shift Dual Active Bridge for EV Charging (G2V / V2G)
+# A Precise Dead-Time ZVS Framework and a Fast Reduced-Order Evaluator for a DC–DC Converter with the Wolfspeed CAB320M17XM3 1.7 kV SiC Module
 
-An exact discrete-time model of a dual active bridge with triple-phase-shift (TPS) modulation, its small-signal model, and a PI current controller for the battery-side current, for charging (G2V) and discharging (V2G). One formulation covers all twelve TPS operating modes. The exact model matches a Simscape Electrical switching model to within 0.12 % of peak in all five states; the small-signal model matches the exact model to within 1.14 % in a step test in every mode; one PI design per power direction is stable in all six V2G modes and in five of the six G2V modes.
+A precise ZVS framework and a reduced-order ZVS evaluator for a dual active bridge with triple-phase-shift modulation that predict, for every switching edge of a period, whether the switch turns on at zero voltage, when its transition completes and how far the transition delays the effective switching instant, using the datasheet output capacitance of the Wolfspeed CAB320M17XM3 1.7 kV SiC module. Both are validated against a circuit-level Simscape model at 21 operating points: 16 TPS mode cases in G2V and V2G operation at 800 V, and five points at 431–994 V where a primary and a secondary edge fall inside the same dead time.
 
 ## Skills Used
 
 - Power Electronics Modelling (Dual Active Bridge, Triple-Phase-Shift)
+- Soft-Switching / ZVS Analysis
 - EV Charging Power Conversion (G2V / V2G)
-- Discrete-Time and State-Space Modelling
-- Small-Signal Analysis and Linearisation
-- Digital Control (PI current loop)
-- Stability Analysis (margins, closed-loop poles)
-- Circuit Simulation and Verification (Simulink / Simscape Electrical)
-- MATLAB (Control System Toolbox)
+- State-Space &amp; Analytical Converter Modelling
+- SiC Device Modelling (nonlinear datasheet C<sub>oss</sub>)
+- Numerical Methods (ODE solvers, quadrature, fixed-point iteration)
+- Circuit Simulation &amp; Verification (Simulink / Simscape Electrical)
+- MATLAB
 
 ## Project Overview
 
-The converter is a dual active bridge between an 800 V DC link and a battery, with LC filters on both sides and the link inductance on the primary side. It transfers power in both directions: charging the battery (G2V) and feeding power back (V2G). Triple-phase-shift modulation sets the eight switching edges of each period through three phase shifts: D1 inside the primary bridge, D2 inside the secondary bridge and D3 between the bridges. The current to the battery is controlled through D3.
+The converter is a dual active bridge between an 800 V DC link and a battery, operated in both directions: charging the battery (G2V) and feeding power back (V2G). Triple-phase-shift modulation sets the timing of the eight switching edges in each period. Between the turn-off of one switch in a leg and the turn-on of the other there is a 200 ns dead time, during which the link current moves the switch node, charging and discharging the output capacitance of both switches.
 
-Targets of the work:
+I built two evaluators that compute, for each edge, the outcome of that transition and its effect on the converter waveforms, and a Simscape model of the converter to validate them.
 
-- One model for all twelve TPS modes (six G2V, six V2G), with no mode-by-mode equations
-- Exact switching behaviour over a period, including the input and output filters
-- The small-signal model from D1, D2, D3 and both port voltages to the battery-side current
-- A PI current controller designed on that model and checked across all twelve modes
-- Verification against a circuit-level Simscape model
+Design targets for the evaluators:
 
-| Parameter | Symbol | Value |
+- All eight switching edges of a TPS period (four legs, rising and falling) evaluated at each operating point
+- Datasheet C<sub>oss</sub> of the CAB320M17XM3 from 0 to 1700 V, for both switches of every leg
+- 800 V DC link, 20 kHz switching, 200 ns dead time, transformer ratio n = 1.7, 37.5 µH primary-side link inductance
+- Both power directions (G2V and V2G)
+- Edges of the primary and the secondary bridge that fall inside the same dead time
+- Validation against a circuit-level simulation with the same device capacitance
+
+![Simscape model of the dual active bridge converter](figures/fig1_circuit.png)
+
+*Figure 1: Simscape Electrical model of the converter used as the test bench. From left to right: 800 V DC source with input filter and DC-link capacitor; primary full bridge (S1–S4); current sensor and primary-side link resistance and inductance; ideal transformer (n = 1.7); secondary full bridge (S5–S8); battery-side capacitor, filter and source. Each switch is an ideal MOSFET with body diode in parallel with a datasheet-table C<sub>oss</sub> block; the eight gate signals come from time-based pulse generators, and node, bus and link-current signals are logged for comparison with the evaluators.*
+
+## What the Evaluators Compute
+
+Both evaluators take one operating point (the three phase shifts D1, D2, D3 and the battery voltage) and return, for each of the eight edges:
+
+- **ZVS verdict:** whether the switch node reaches its rail before the incoming switch is turned on at command + 200 ns.
+- **Arrival time:** when the switch node reaches the rail, measured from the turn-off command.
+- **Effective delay:** the integral of the part of the swing not yet completed, from the command to the arrival (or to the end of the dead time), fed back into the converter model as a shifted edge.
+- **How the transition ends:** arrival at the rail (ZVS); still moving when the dead time ends, then forced turn-on (partial swing); no movement because the current points the wrong way (hard switching). The solvers also handle a node that stays clamped until the current reverses, and a swing that falls back when the energy runs out.
+- **Coupled transitions:** edges closer together than the dead time, including a primary and a secondary edge, are solved together because they share the link current.
+- **Nonlinear device capacitance:** each node sees C<sub>oss</sub>(v) + C<sub>oss</sub>(V<sub>bus</sub> − v) of its two switches, from the datasheet curve.
+- **Self-consistent operating point:** the delays and the converter waveform are iterated until the ZVS pattern repeats and the delays stop changing.
+- **Converter quantities with the dead-time effects included:** link current at every edge, battery current and RMS link current.
+
+## The Converter and Its SiC Switches
+
+The primary bridge (legs PA and PB) sits on the 800 V DC link, the secondary bridge (legs SA and SB) on the battery side, coupled through the transformer (n = 1.7) and a 37.5 µH link inductance with 25 mΩ resistance on the primary side. Both sides have LC filters. The eight commanded edges of a period are set by three phase shifts: D1 between the two primary legs, D2 between the two secondary legs and D3 between the two bridges.
+
+Each switch's output capacitance is taken from the CAB320M17XM3 datasheet curve (Rev. 5, Figs. 8–9). It falls from about 36 nF near 0 V to about 1 nF above 800 V.
+
+![One primary bridge leg of the Simscape model](figures/fig2_leg.png)
+
+*Figure 2: One primary leg of the Simscape model (leg PA). The high-side switch S1 and low-side switch S2 are ideal MOSFETs with body diodes, each with its own datasheet C<sub>oss</sub> block (red) connected drain to source; their midpoint is the switch node PA_mid. The gate signals [S1] and [S2] come from the pulse-generator timing.*
+
+![Output capacitance versus voltage](figures/fig3_coss.png)
+
+*Figure 3: Output capacitance of one switch of the Wolfspeed CAB320M17XM3 as used by both evaluators and the Simscape model: datasheet curve (Rev. 5, Figs. 8–9) digitized and smoothed (median over 70 logarithmic voltage bins, made non-increasing, pchip interpolation in log–log), held constant below the first digitized point (0.58 V).*
+
+## What Happens in a Dead Time
+
+Fig. 4 shows the voltage v<sub>DS</sub> across the switch that turns on at the end of the dead time, in three Simulink cases. At the turn-off command t<sub>x</sub> it equals the bus voltage V<sub>x</sub>. In (a) it falls to zero at t<sub>zvs</sub>, before the dead time ends, and stays there until the gate turns on at t<sub>dead</sub>: ZVS. In (b) it is still falling at t<sub>dead</sub> and jumps from the remaining voltage dV<sub>x</sub> to zero when the switch turns on: a partial swing. In (c) it does not move during the dead time and jumps from V<sub>x</sub> to zero at t<sub>dead</sub>: hard switching.
+
+![Three dead-time transitions in Simulink](figures/fig4_transitions.png)
+
+*Figure 4: Voltage across the switch that turns on at the end of the dead time (Simulink, datasheet C<sub>oss</sub>, 200 ns dead time). (a) Mode 5, G2V, 800 V, edge PB↑. (b) Point #540, battery 431 V, edge SA↑. (c) Mode 1, G2V, 800 V, edge SB↑. t<sub>x</sub>: turn-off command; t<sub>zvs</sub>: v<sub>DS</sub> reaches zero; t<sub>dead</sub>: the incoming switch turns on; V<sub>x</sub>: bus voltage; dV<sub>x</sub>: voltage left at t<sub>dead</sub>.*
+
+## Architecture: Two Evaluators
+
+| Layer | Precise ZVS framework | Reduced-order ZVS evaluator |
 |---|---|---|
-| DC-link voltage | V<sub>1</sub> | 800 V |
-| Battery voltage (analysis point) | V<sub>2</sub> | 800 V |
-| Switching frequency | f<sub>s</sub> | 50 kHz |
-| Transformer turns ratio | n = N<sub>p</sub>/N<sub>s</sub> | 1.7 |
-| Link inductance (primary side) | L<sub>s</sub> | 15 µH |
-| Link resistance | R<sub>s</sub> | 25 mΩ |
-| Input filter | L<sub>i</sub>, R<sub>i</sub>, C<sub>i</sub> | 10 µH, 100 mΩ, 30 µF |
-| Output filter | L<sub>o</sub>, R<sub>o</sub>, C<sub>o</sub> | 10 µH, 100 mΩ, 44 µF |
+| Converter model | Exact five-state model (link current, two filter-inductor currents, two bus-capacitor voltages), solved interval by interval with matrix exponentials | Analytical RL-segment model with zero-mean link current and bus-ripple correction |
+| Dead-time swing | ODE integration of the switch-node voltages and the link current | Energy method along the datasheet curve, without ODE |
+| Edges in one dead time | Integrated together in one ODE | Solved jointly in the link charge s = ∫ i dt |
+| Device capacitance | Datasheet C<sub>oss</sub> lookup table, 5 mV steps | Same curve, with precomputed charge and energy integrals |
+| Delay feedback loop | Until the ZVS pattern repeats and delays change < 0.01 ns | Until delays change < 0.1 ns; all operating points evaluated as one block |
 
-*Table 1: Converter parameters.*
+## The Precise ZVS Framework
 
-## The Exact Discrete-Time Model
+The converter is described by five states: the link current, the input and output filter-inductor currents, and the two bus-capacitor voltages. Between edges each interval is linear and is solved with a matrix exponential; chaining the eight intervals gives the periodic steady state directly, and a series DC term keeps the link current at zero mean.
 
-The approach follows the exact switching-period small-signal model of Krismer and Kolar for a phase-shift DAB, here applied over one full switching period and to all twelve TPS modes.
+At each commanded edge, the dead-time swing is integrated numerically from that steady state, starting with the link current and bus voltages at the command. The integrated states are the switch-node voltages and the link current, with C<sub>oss</sub>(v) + C<sub>oss</sub>(V<sub>bus</sub> − v) at each node. The events are: clamped while the current points the wrong way, free swing, arrival or fall-back, and forced turn-on at command + 200 ns. Edges closer together than 200 ns are integrated together. The effective delays are fed back as shifted edges and the steady state is solved again, until the ZVS pattern repeats and the delays change by less than 0.01 ns.
 
-The converter has five states: the link current, the input and output filter-inductor currents and the two bus-capacitor voltages,
+## The Reduced-Order Evaluator
 
-```math
-\mathbf{x} = \begin{bmatrix} i_p & i_{Li} & i_{Lo} & v_{Ci} & v_{Co} \end{bmatrix}^T . \tag{1}
-```
+The period is modelled analytically as RL segments with a zero-mean link current and a correction for the bus-capacitor ripple, which gives the link current and bus voltages at each commanded edge.
 
-Between two switching edges the circuit is linear, $`\dot{\mathbf{x}} = \mathbf{A}_k\mathbf{x} + \mathbf{f}`$, with
+For an edge alone in its dead time, the swing is computed with the energy method along the datasheet curve (D'Antonio et al., eq. 8): the squared current at each point of the swing is the initial value plus the energy balance against the leg capacitance, and the time to reach that point is the integral of capacitance over current. The integrals use 97 points with a cosine change of variable and the cumulative Simpson rule. The events are the same as in the precise framework. All operating points are evaluated as one block, with the same delay feedback loop.
 
-```math
-\mathbf{A}_k = \begin{bmatrix}
--\frac{R_s}{L_s} & 0 & 0 & \frac{s_1^{(k)}}{L_s} & -\frac{n s_2^{(k)}}{L_s} \\
-0 & -\frac{R_i}{L_i} & 0 & -\frac{1}{L_i} & 0 \\
-0 & 0 & -\frac{R_o}{L_o} & 0 & -\frac{1}{L_o} \\
--\frac{s_1^{(k)}}{C_i} & \frac{1}{C_i} & 0 & 0 & 0 \\
-\frac{n s_2^{(k)}}{C_o} & 0 & \frac{1}{C_o} & 0 & 0
-\end{bmatrix}, \tag{2}
-```
+## Two Bridges in One Dead Time
 
-```math
-\mathbf{f} = \begin{bmatrix} 0 & \frac{V_i}{L_i} & \frac{V_o}{L_o} & 0 & 0 \end{bmatrix}^T . \tag{3}
-```
+When edges fall closer together than the dead time, the reduced-order evaluator solves them together. It writes the swing in the charge delivered by the link, s = ∫ i dt, which ties the legs to one variable: each leg's charge changes in proportion to s, the squared link current changes with the link voltage integrated over s, and time is the integral of ds over the current. Arrivals, fall-backs and forced turn-ons are events along s, so the group is solved without ODE. Fig. 7 shows this case against Simscape.
 
-The eight edges of a period are $`\theta \in \{0,\ \phi_1,\ \pi,\ \pi+\phi_1,\ \phi_3,\ \phi_3+\phi_2,\ \pi+\phi_3,\ \pi+\phi_3+\phi_2\} \pmod{2\pi}`$ with $`\phi_i = D_i\pi`$. They are sorted, which gives the eight interval lengths $`t_k = (\theta_{k+1}-\theta_k)/\omega`$, and the bridge switching functions are evaluated at each interval midpoint $`\bar\theta_k`$:
+## Validation Against Simscape
 
-```math
-s_1^{(k)} = \tfrac{1}{2}\left[\operatorname{sgn}\sin\bar\theta_k - \operatorname{sgn}\sin(\bar\theta_k-\phi_1)\right], \tag{4}
-```
+The Simscape model (Fig. 1) uses ideal MOSFETs with body diodes, each in parallel with a datasheet C<sub>oss</sub> block, with the same circuit parameters as the evaluators. The gates come from time-based pulse generators, so the variable-step solver hits every edge exactly. Each case is first run to steady state and then recorded with a 20 ns maximum step.
 
-```math
-s_2^{(k)} = \tfrac{1}{2}\left[\operatorname{sgn}\sin(\bar\theta_k-\phi_3) - \operatorname{sgn}\sin(\bar\theta_k-\phi_3-\phi_2)\right]. \tag{5}
-```
+The 21 cases are the 16 TPS mode cases at 800 V (eight G2V, eight V2G) and the five two-bridge points #265, #504, #520, #522 and #540 at 431–994 V.
 
-Because the edges are sorted rather than listed per mode, the same expressions hold for every TPS mode and both power directions; a negative D3 (V2G) is placed in the period by the modulo. Over each interval the state moves as $`\mathbf{x}(t+t_k) = \mathbf{E}_k\mathbf{x}(t) + \boldsymbol{\psi}_k`$, and both blocks come from one augmented matrix exponential, which needs no inverse of $`\mathbf{A}_k`$ (singular whenever a bridge is clamped):
+Fig. 5 shows eight transitions from these cases. In every panel the Simscape switch voltage, the precise framework and the reduced-order points follow the same transition and end the same way: ZVS in (a), (c), (e), (f) and (g), hard switching in (b) and (d), and a partial swing in (h).
 
-```math
-\exp\!\left(\begin{bmatrix} \mathbf{A}_k & \mathbf{f} \\ \mathbf{0} & 0 \end{bmatrix} t_k\right) = \begin{bmatrix} \mathbf{E}_k & \boldsymbol{\psi}_k \\ \mathbf{0} & 1 \end{bmatrix}. \tag{6}
-```
+![Eight dead-time transitions: Simulink and both evaluators](figures/fig5_validation.png)
 
-Chaining the eight interval maps gives the exact one-period map $`\mathbf{x}_{k+1} = \mathbf{G}_p\mathbf{x}_k + \mathbf{H}_p`$, with $`\mathbf{G}_p = \mathbf{E}_8\cdots\mathbf{E}_1`$. The periodic steady state follows in closed form, $`\mathbf{x}^\star = (\mathbf{I}-\mathbf{G}_p)^{-1}\mathbf{H}_p`$, without simulating a transient.
+*Figure 5: Dead-time transitions in eight Simscape cases: voltage across the switch that turns on. (a) Mode 5, G2V, PB↑. (b) Mode 1, G2V, SB↑. (c) Mode 6, G2V, PA↓. (d) Mode 1, V2G, SA↑. (e) Mode 3′, V2G, SA↑. (f) Mode 6′, V2G, PB↓. (g) Point #504 (battery 482 V), SA↓. (h) Point #540 (battery 431 V), SA↑. (a)–(f) at 800 V battery voltage. Simulink (solid), precise ZVS framework (dashed), reduced-order ZVS evaluator (circles: its computed points, one every 10 ns). The evaluator traces end where each transition is complete: at t<sub>zvs</sub> for ZVS edges, at t<sub>dead</sub> for hard and partial edges.*
 
-<p align="center"><img src="figures/fig_states.png" alt="All five states over two periods, G2V and V2G"></p>
+Fig. 6 shows the same eight cases over one switching period. In all eight, the primary and secondary bridge voltages and the link current of the two evaluators lie on top of the Simscape waveforms.
 
-*Figure 1: The five states over two switching periods in steady state, from the exact model. (a) Mode 1, G2V, D = [0.80, 0.30, 0.40]. (b) Mode 1′, V2G, D = [0.80, 0.30, −0.70]. Rows: link current i<sub>p</sub>, input-filter current i<sub>Li</sub>, battery-side current i<sub>Lo</sub>, input-capacitor voltage v<sub>Ci</sub>, output-capacitor voltage v<sub>Co</sub>. i<sub>Lo</sub> is counted positive into the converter, so charging (G2V) is negative: mean −41.0 A in (a), +14.7 A in (b).*
+![Full-period waveforms, cases a to d](figures/fig6_waveforms_a.png)
 
-<p align="center"><img src="figures/fig_link_current.png" alt="Link current in all twelve modes"></p>
+![Full-period waveforms, cases e to h](figures/fig6_waveforms_b.png)
 
-*Figure 2: Link current i<sub>p</sub> over two periods in all twelve operating points of Table 2. (a)–(f) G2V Modes 1–6; (g)–(l) V2G Modes 1′–6′.*
+*Figure 6: One switching period of the eight cases of Fig. 5, (a)–(h). Rows: primary bridge voltage v<sub>pri</sub>, secondary bridge voltage v<sub>sec</sub> and link current i<sub>pri</sub>, against t/T<sub>s</sub>. Simulink, precise ZVS framework and reduced-order ZVS evaluator. In the evaluators the bridge voltages switch at the effective (delayed) edge instants they computed.*
 
-## Validation Against Simulink
+Fig. 7 shows point #540 (battery 431 V), where the primary edge PB↑ and the secondary edge SB↓ are commanded 2 ns apart, inside the same dead time. Both switch voltages fall to zero within the dead time in Simscape and in both evaluators; both evaluators give ZVS for both edges, with effective delays of 11.2 ns (PB↑) and 4.9 ns (SB↓), the same as measured from the Simscape waveform.
 
-The exact model was compared with a Simscape Electrical model of the same circuit: ideal MOSFETs with the same gate timing, no dead time, the parameters of Table 1, a 0.5 µs solver step and a 10 ms run, of which the last period is compared. The operating point is Mode 1, G2V. The off-state conductance of the Simscape switches was set to 10<sup>−9</sup> S.
+![Two edges in one dead time at point 540](figures/fig7_twobridge.png)
 
-| State | Mean, Simulink | Mean, exact model | RMS difference (% of peak) |
-|---|---|---|---|
-| i<sub>p</sub> | −0.047 A | −0.047 A | 0.003 % |
-| i<sub>Li</sub> | 41.666 A | 41.616 A | 0.120 % |
-| i<sub>Lo</sub> | −40.952 A | −40.982 A | 0.074 % |
-| v<sub>Ci</sub> | 795.009 V | 795.014 V | 0.002 % |
-| v<sub>Co</sub> | 804.740 V | 804.742 V | 0.001 % |
-
-<p align="center"><img src="figures/fig_simulink_validation.png" alt="Five states, Simulink against the exact model"></p>
-
-*Figure 3: One switching period of the five states, Mode 1 G2V: Simulink (solid) and the exact discrete-time model (dashed). (a) i<sub>p</sub>, (b) i<sub>Li</sub>, (c) i<sub>Lo</sub>, (d) v<sub>Ci</sub>, (e) v<sub>Co</sub>.*
-
-## The Small-Signal Model
-
-Since the one-period map is affine in the state, its state Jacobian is the monodromy matrix itself, $`\mathbf{A}_d = \mathbf{G}_p`$, exactly. The input Jacobians $`\mathbf{B}`$ (for D1, D2, D3) and $`\mathbf{C}`$ (for V<sub>i</sub>, V<sub>o</sub>) are central differences of the exact map about $`\mathbf{x}^\star`$. In the form of Krismer and Kolar, sampled once per period instead of once per half period,
-
-```math
-\hat{\mathbf{x}}_{k+1} = \mathbf{A}_d\,\hat{\mathbf{x}}_k + \mathbf{B}\,\hat{\mathbf{d}}_k + \mathbf{C}\,\hat{\mathbf{v}}_{g,k} , \tag{7}
-```
-
-and the control path used for the current loop is
-
-```math
-G_{i_{Lo},D_3}(z) = \mathbf{E}_y\,(z\mathbf{I}-\mathbf{A}_d)^{-1}\,\mathbf{B}_{:,3} = \frac{\delta i_{Lo}}{\delta D_3}(z), \qquad \mathbf{E}_y = \begin{bmatrix} 0 & 0 & 1 & 0 & 0 \end{bmatrix}. \tag{8}
-```
-
-Its value at z = 1 is the DC gain K<sub>dc</sub>, the change of battery current per unit of D3 (Table 2).
-
-| Operating point | D1 | D2 | D3 | K<sub>dc</sub> (A) | Largest Floquet multiplier | Step-test error |
-|---|---|---|---|---|---|---|
-| Mode 1, G2V | 0.80 | 0.30 | 0.40 | −272.61 | 0.96792 | 0.012 % |
-| Mode 2, G2V | 0.30 | 0.60 | 0.80 | 283.20 | 0.96803 | 0.013 % |
-| Mode 3, G2V | 0.35 | 0.30 | 0.50 | 1.57 | 0.96760 | 0.215 % |
-| Mode 4, G2V | 0.40 | 0.50 | 0.60 | 95.82 | 0.96793 | 0.491 % |
-| Mode 5, G2V | 0.70 | 0.40 | 0.35 | −315.13 | 0.96800 | 0.152 % |
-| Mode 6, G2V | 0.80 | 0.70 | 0.50 | −75.58 | 0.96849 | 1.142 % |
-| Mode 1′, V2G | 0.80 | 0.30 | −0.70 | 276.49 | 0.96792 | 0.005 % |
-| Mode 2′, V2G | 0.60 | 0.80 | −0.10 | −551.97 | 0.96850 | 0.015 % |
-| Mode 3′, V2G | 0.35 | 0.30 | −0.40 | −4.37 | 0.96760 | 0.116 % |
-| Mode 4′, V2G | 0.40 | 0.50 | −0.45 | −51.20 | 0.96793 | 0.775 % |
-| Mode 5′, V2G | 0.70 | 0.40 | −0.50 | 178.91 | 0.96800 | 0.273 % |
-| Mode 6′, V2G | 0.80 | 0.70 | −0.40 | −90.26 | 0.96849 | 1.004 % |
-
-*Table 2: The twelve operating points, their DC gain from D3 to i<sub>Lo</sub>, the largest Floquet multiplier (eigenvalue of G<sub>p</sub>) and the step-test error of Fig. 4. All multipliers are below 1: every operating point is stable in open loop.*
-
-<p align="center"><img src="figures/fig_step_validation.png" alt="Step in D3, small-signal model against the exact model"></p>
-
-*Figure 4: Response of i<sub>Lo</sub> to a step of 0.001 in D3 at t = 1 ms, sampled once per period, in the twelve operating points of Table 2 ((a)–(f) G2V Modes 1–6, (g)–(l) V2G Modes 1′–6′): exact discrete-time model (solid) and small-signal model (dashed).*
-
-<p align="center"><img src="figures/fig_bode.png" alt="Magnitude of the control path in all twelve modes"></p>
-
-*Figure 5: Magnitude of G<sub>iLo,D3</sub>(z) up to f<sub>s</sub>/2 in the twelve operating points, (a)–(l) as in Fig. 4. The low-frequency gain ranges from about 4 dB (Mode 3, (c)) to about 55 dB (Mode 2′, (h)); every mode has a resonance peak near 7–8 kHz.*
-
-<p align="center"><img src="figures/fig_poles_zeros.png" alt="Poles and zeros of the control path"></p>
-
-*Figure 6: (a) Poles and (b) zeros of G<sub>iLo,D3</sub>(z) for the twelve operating points; G2V blue, V2G red. The poles of all twelve modes nearly coincide: a real pole at z ≈ 0.97 and two complex pairs at |z| ≈ 0.9. The zeros move from mode to mode, from about −7.7 to 0.98 on the real axis.*
-
-The twelve control paths have nearly the same poles, while their DC gain spans more than two orders of magnitude and changes sign from mode to mode.
-
-## PI Current Control
-
-The current is sampled once per period and a new D3 takes effect one period later, so the plant seen by the controller is
-
-```math
-G_{\mathrm{plant}}(z) = G_{i_{Lo},D_3}(z)\, z^{-N}, \qquad N = 1 . \tag{9}
-```
-
-A discrete PI (forward Euler) was tuned on each mode's plant divided by its own K<sub>dc</sub>, for a crossover of 300 Hz. Within each power direction, each of the six resulting gain pairs was tried on all six modes, and the pair that kept the most modes stable with the largest worst-case gain margin was kept: K<sub>p,n</sub> = 0.01445, K<sub>i,n</sub> = 1445 for both directions (from Mode 6 for G2V and Mode 4′ for V2G). Each mode then uses K<sub>p</sub> = K<sub>p,n</sub>/K<sub>dc</sub> and K<sub>i</sub> = K<sub>i,n</sub>/K<sub>dc</sub>, so the sign of the gains follows the sign of the plant.
-
-| Operating point | K<sub>p</sub> | K<sub>i</sub> | Crossover (Hz) | Gain margin (dB) | Phase margin (°) | Unity crossings | Largest closed-loop pole | Stable |
-|---|---|---|---|---|---|---|---|---|
-| Mode 1, G2V | −5.30×10<sup>−5</sup> | −5.30 | 230 | 21.5 | 86.9 | 1 | 0.970 | yes |
-| Mode 2, G2V | 5.10×10<sup>−5</sup> | 5.10 | 218 | 22.5 | 83.4 | 1 | 0.971 | yes |
-| Mode 3, G2V | 9.17×10<sup>−3</sup> | 917.4 | 8622 | −5.3 | −58.8 | 3 | 1.069 | **no** |
-| Mode 4, G2V | 1.51×10<sup>−4</sup> | 15.08 | 206 | 25.4 | 77.3 | 1 | 0.974 | yes |
-| Mode 5, G2V | −4.58×10<sup>−5</sup> | −4.58 | 230 | 21.6 | 86.9 | 1 | 0.970 | yes |
-| Mode 6, G2V | −1.91×10<sup>−4</sup> | −19.11 | 300 | 16.6 | 97.1 | 1 | 0.984 | yes |
-| Mode 1′, V2G | 5.23×10<sup>−5</sup> | 5.23 | 230 | 21.0 | 87.2 | 1 | 0.970 | yes |
-| Mode 2′, V2G | −2.62×10<sup>−5</sup> | −2.62 | 235 | 20.8 | 88.2 | 1 | 0.975 | yes |
-| Mode 3′, V2G | −3.31×10<sup>−3</sup> | −331.1 | 231 | 3.2 | 95.4 | 1 | 0.972 | yes |
-| Mode 4′, V2G | −2.82×10<sup>−4</sup> | −28.22 | 300 | 17.8 | 96.2 | 1 | 0.984 | yes |
-| Mode 5′, V2G | 8.08×10<sup>−5</sup> | 8.08 | 230 | 21.5 | 86.7 | 1 | 0.970 | yes |
-| Mode 6′, V2G | −1.60×10<sup>−4</sup> | −16.01 | 290 | 16.9 | 95.9 | 1 | 0.984 | yes |
-
-*Table 3: The deployed PI gains and the resulting current loop in each operating point. "Unity crossings" counts how often the loop gain crosses 0 dB; with a single crossing the margins describe the loop directly.*
-
-All six V2G modes are stable, with one crossing each, phase margins of 86.7–96.2° and gain margins of 16.9–21.5 dB, except Mode 3′ at 3.2 dB. Five of the six G2V modes are stable, with gain margins of 16.6–25.4 dB and phase margins of 77–97°.
-
-Mode 3, G2V, is not stabilised. Its DC gain, 1.57 A per unit D3, is two orders of magnitude below most other modes, while its resonance near 7.5 kHz is about 36 dB above its low-frequency gain (Fig. 5c). Dividing by the small K<sub>dc</sub> lifts that resonance above 0 dB: the loop crosses unity three times, the gain margin is −5.3 dB and a closed-loop pole lies at 1.069. No G2V gain pair tried as reference, including the one tuned on Mode 3 itself, gave more than five stable G2V modes.
-
-The loop was also run in Simulink, in Mode 1 G2V: the Simscape model of the validation section, D1 and D2 fixed, D3 equal to its nominal value plus the PI output (limited to ±0.08), the measured current delayed by one period, and the gains of Table 3.
-
-<p align="center"><img src="figures/figsimulink.png" alt="PI step response in Simulink"></p>
-
-*Figure 7: Simulink, Mode 1 G2V, closed loop: current reference (yellow) stepped from −41.3 A to −46.3 A at t = 5 ms, and i<sub>Lo</sub> as sampled by the controller (blue). The current follows the step without overshoot, passes −45 A about 1 ms after it and settles on the new reference.*
+*Figure 7: Two edges in one dead time at point #540 (battery 431 V): (a) primary leg, edge PB↑; (b) secondary leg, edge SB↓, commanded 2 ns later. Voltage across the switch that turns on. Simulink (solid), precise ZVS framework (dashed), reduced-order ZVS evaluator (circles: its computed points, one every 10 ns). Ticks: each leg's command t<sub>x</sub>, zero crossing t<sub>zvs</sub> and end of dead time t<sub>dead</sub>.*
 
 ## Implementation
 
-| File | Purpose |
-|---|---|
-| `dab_params.m` | Parameters of Table 1 and the twelve operating points of Table 2 |
-| `dab_period_map.m` | Exact one-period map: sorted edges, switching functions, augmented matrix exponential (eqs. 1–6) |
-| `dab_linearize.m` | Steady state, A<sub>d</sub>, B, C and G<sub>iLo,D3</sub>(z) for one operating point (eqs. 7–8) |
-| `five_state_calculator.m` | Fig. 1 |
-| `run_waveforms.m` | Fig. 2 |
-| `run_smallsignal.m` | Table 2, Figs. 4–6 |
-| `run_pi.m` | PI design and Table 3 |
-| `openloopDAB.slx`, `validate_exact_model.m` | Simscape model and comparison of Fig. 3 |
-| `closedloopDAB.slx`, `closedloop_init.m` | Closed-loop Simscape model and its parameters, Fig. 7 |
-
-Requirements: MATLAB with the Control System Toolbox; Simulink and Simscape Electrical for the two models. To reproduce the closed-loop run, run `closedloop_init`, then run `closedloopDAB.slx`.
-
-Reference: F. Krismer and J. W. Kolar, "Accurate Small-Signal Model for an Automotive Bidirectional Dual Active Bridge Converter," IEEE, 2008.
+- Precise ZVS framework and reduced-order ZVS evaluator: MATLAB (not public). The reduced-order evaluator is the dead-time evaluator of a TPS lookup-table bank.
+- Simscape Electrical test bench of the converter with a datasheet C<sub>oss</sub> library: `simulink/`.
