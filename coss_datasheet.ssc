@@ -1,0 +1,33 @@
+component coss_datasheet
+% Coss (datasheet table)
+% Nonlinear output capacitance between ports p and n:
+%     i = C(|v|) * dv/dt,   v = p.v - n.v
+% C(v) is interpolated linearly in the table (Vtab, Ctab).
+% Use: one block in parallel with each MOSFET, p to the drain, n to the
+% source. Tables from coss_setup.m (COSS_V, COSS_C): Wolfspeed CAB320M17XM3,
+% datasheet Rev. 5, smoothed exactly as in the T1/T4 evaluators.
+
+  nodes
+    p = foundation.electrical.electrical; % +:left
+    n = foundation.electrical.electrical; % -:right
+  end
+
+  parameters
+    Vtab = {[0 1 1700], 'V'};           % Voltage table (COSS_V)
+    Ctab = {[1e-9 1e-9 1e-9], 'F'};     % Capacitance table (COSS_C)
+  end
+
+  variables
+    i = {0, 'A'};                                        % Current
+    v = {value = {0, 'V'}, priority = priority.none};    % Voltage
+  end
+
+  branches
+    i : p.i -> n.i;
+  end
+
+  equations
+    v == p.v - n.v;
+    i == tablelookup(Vtab, Ctab, abs(v), interpolation = linear, extrapolation = nearest) * v.der;
+  end
+end
